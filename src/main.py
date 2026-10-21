@@ -209,7 +209,33 @@ class QR_GEN:
                 num_bin = f"{byte:b}"
                 encoded_text+= "0" * (8 - len(num_bin) ) + num_bin
         else: #kanji encoding
-            pass
+            byte_data = text.encode("shift_jis")
+            kanji_hex = byte_data.hex()
+            print("kanji_hex" , kanji_hex)
+            # we have two ranges
+            kanji_char_hex = [kanji_hex[i:i+4] for i in range(0, len(kanji_hex), 4)]
+            
+            print("kanji_char_hex" , kanji_char_hex)
+            for char in kanji_char_hex :
+                dec_char = int(char,16)
+                if dec_char >= int("8140" , 16) and dec_char <= int("9FFC" , 16):
+                    substracted_value = hex(dec_char - int("8140" , 16))[2:]
+                    print("Subtracted_value" , substracted_value)
+                    most_significant_byte = substracted_value[0:2]
+                    least_significant_byte = substracted_value[2:]
+                    result = int(most_significant_byte,16) * int("C0",16) + int(least_significant_byte,16)
+                    binary_result = f"{result:013b}"[-13:]
+                    encoded_text += binary_result
+                    
+                elif dec_char >= int("E040",16) and dec_char <= int("EBBF",16):
+                    
+                    substracted_value = hex(dec_char - int("C140" , 16))[2:]
+                    most_significant_byte = substracted_value[0:2]
+                    least_significant_byte = substracted_value[2:]
+                    result = int(most_significant_byte,16) * int("C0",16) + int(least_significant_byte,16)
+                    binary_result = f"{result:013b}"[-13:]
+                    encoded_text += binary_result
+
         return encoded_text
                     
     def encode_utf_iso(self,text):

@@ -314,25 +314,18 @@ class QR_GEN:
         
     def set_mode(self):
         text = self.text
-        i = 0
         
-        while i<len(text):
-            char = text[i]
-            if char in self.NUMERIC and (not self.mode  or self.mode == "numeric"):
-                self.mode = "numeric"
-            elif char in self.ALPHANUMERIC:
-                self.mode = "alphanumeric"
-            else:
-                try:
-                    if char not in self.ALPHANUMERIC:
-                        char.encode("iso-8859-1")
-                        
-                        if self.mode != "byte":
-                            self.mode = "byte"
-                except UnicodeEncodeError:
-                    if self.mode != "kanji":
-                        self.mode = "kanji"
-            i+=1
+        
+        if all(c in self.NUMERIC for c in text):
+            self.mode = "numeric"
+        elif all(c in self.ALPHANUMERIC for c in text):
+            self.mode = "alphanumeric"
+        else:
+            try:
+                text.encode("iso-8859-1")        
+                self.mode = "byte"
+            except UnicodeEncodeError:
+                self.mode = "kanji"
         print(f"mode : {self.mode}")
         
     def set_version(self):
@@ -402,14 +395,10 @@ class QR_GEN:
         text = self.text
         encoded_text = ""
     
+        # 1. Numeric mode
         if mode == "numeric":
-            # Split into groups of 3 digits, preserving leading zeros.
-            groups = [
-                text[i:i + 3]
-                for i in range(0, len(text), 3)
-            ]
-    
-            for group in groups:
+            for i in range(0, len(text), 3):
+                group = text[i:i + 3]
                 value = int(group)
     
                 if len(group) == 3:
@@ -421,8 +410,8 @@ class QR_GEN:
     
                 encoded_text += f"{value:0{width}b}"
     
+        # 2. Alphanumeric mode
         elif mode == "alphanumeric":
-            # Encode pairs as 11 bits and a final single character as 6 bits.
             i = 0
     
             while i + 1 < len(text):
@@ -433,32 +422,30 @@ class QR_GEN:
                 encoded_text += f"{value:011b}"
                 i += 2
     
+            # One remaining character uses 6 bits
             if i < len(text):
                 value = self.ALPHANUMERIC.index(text[i])
                 encoded_text += f"{value:06b}"
     
+        # 3. Byte mode
         elif mode == "byte":
-            # encode_utf_iso() should return an iterable of integer bytes.
             byte_data = self.encode_utf_iso(text)
     
             for byte in byte_data:
                 encoded_text += f"{byte:08b}"
     
+        # 4. Kanji mode
         elif mode == "kanji":
-            # QR Kanji mode uses pairs of Shift JIS bytes.
             byte_data = text.encode("shift_jis")
     
+            # QR Kanji mode requires exactly two Shift JIS bytes per character
             if len(byte_data) != 2 * len(text):
                 raise ValueError(
-                    "Kanji mode requires each character to encode "
-                    "to exactly two Shift JIS bytes."
+                    "Some characters are not supported by QR Kanji mode."
                 )
     
             for i in range(0, len(byte_data), 2):
-                char_value = (
-                    (byte_data[i] << 8)
-                    | byte_data[i + 1]
-                )
+                char_value = (byte_data[i] << 8) | byte_data[i + 1]
     
                 if 0x8140 <= char_value <= 0x9FFC:
                     adjusted = char_value - 0x8140
@@ -468,8 +455,7 @@ class QR_GEN:
     
                 else:
                     raise ValueError(
-                        f"Shift JIS value {char_value:#06x} "
-                        "is outside the QR Kanji-mode ranges."
+                        f"Unsupported Shift JIS character: {char_value:#06x}"
                     )
     
                 high_byte = adjusted >> 8
@@ -479,47 +465,50 @@ class QR_GEN:
                 encoded_text += f"{value:013b}"
     
         else:
-            raise ValueError(f"Unsupported encoding mode: {mode!r}")
+            raise ValueError(f"Unsupported QR mode: {mode}")
     
-        # Get the total data capacity in bits.
-        total_data_codewords = (
-            self.ERROR_CORRECTION_TABLE[self.version]
-            [self.correction_level][0]
+        # 5. Determine data capacity
+        (total_data_codewords ) = (
+            self.ERROR_CORRECTION_TABLE[self.version][self.correction_level][0]
         )
         capacity_bits = total_data_codewords * 8
-    
-        # Reject data that already exceeds the selected capacity.
         if len(encoded_text) > capacity_bits:
             raise ValueError(
-                f"Payload requires {len(encoded_text)} bits, "
-                f"but version {self.version} at level "
-                f"{self.correction_level} only has "
-                f"{capacity_bits} data bits."
+                f"Data too long: {len(encoded_text)} bits, "
+                f"capacity is {capacity_bits} bits."
             )
     
-        # Add the terminator: up to four zero bits.
-        terminator_length = min(
-            4,
-            capacity_bits - len(encoded_text)
-        )
+        # 6. Add terminator: up to four zero bits
+        terminator_length = min(4, capacity_bits - len(encoded_text))
         encoded_text += "0" * terminator_length
     
-        # Align to the next byte boundary.
+        # 7. Add zero bits until byte-aligned
         alignment_length = (-len(encoded_text)) % 8
         encoded_text += "0" * alignment_length
     
-        # Add alternating pad codewords until capacity is filled.
+        # 8. Add alternating pad codewords until capacity is reached
         pad_codewords = ("11101100", "00010001")
         pad_index = 0
     
         while len(encoded_text) < capacity_bits:
+            remaining = capacity_bits - len(encoded_text)
+    
+            if remaining < 8:
+                # Normally unreachable because capacity is byte-aligned
+                encoded_text += "0" * remaining
+                break
+    
             encoded_text += pad_codewords[pad_index]
             pad_index = 1 - pad_index
     
-        assert len(encoded_text) == capacity_bits
+        # 9. Validate the final result
+        if len(encoded_text) != capacity_bits:
+            raise AssertionError(
+                f"Wrong final length: {len(encoded_text)} bits; "
+                f"expected {capacity_bits} bits."
+            )
     
         return encoded_text
-
 
     def encode_utf_iso(self,text):
         try:
@@ -538,8 +527,18 @@ class QR_GEN:
         
         print(self.encoded_data)
 
+    def error_correction(self):
+        #ec stand for error correction
+        (ec_code_per_block ,grp1_blocks, grp1_codewords_per_block , grp2_blocks , grp2_codewords_per_block) =self.ERROR_CORRECTION_TABLE[self.version][self.correction_level][1:]
+
+        #generating error correction codewords will be done using reed_solomon ....
+        message_polynomial_coff = [int(self.encoded_data[i:i+8],2) for i in range(0, len(self.encoded_data), 8)]
+        print(message_polynomial_coff)
+        pass
+
 text = input("enter ur text : ")
 
 generator = QR_GEN(text)
 
 generator.encoding()
+generator.error_correction()

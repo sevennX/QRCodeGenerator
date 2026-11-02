@@ -311,22 +311,25 @@ class QR_GEN:
         self.set_mode()
         
         # for this one we have 3057B for numeric mode , 1852B for alphanumeric mode , 1273B for byte mode and 784B for kanji mode
-        
     def set_mode(self):
         text = self.text
-        
-        
         if all(c in self.NUMERIC for c in text):
             self.mode = "numeric"
         elif all(c in self.ALPHANUMERIC for c in text):
             self.mode = "alphanumeric"
         else:
             try:
-                text.encode("iso-8859-1")        
+                text.encode("iso-8859-1")
                 self.mode = "byte"
             except UnicodeEncodeError:
-                self.mode = "kanji"
-        print(f"mode : {self.mode}")
+                try:
+                    sj = text.encode("shift_jis")
+                    self.mode = "kanji" if len(sj) == 2 * len(text) else "byte"
+                except UnicodeEncodeError:
+                    self.mode = "byte"      # falls back to UTF-8 bytes
+        print(f"mode : {self.mode}")    
+        
+        
         
     def set_version(self):
         text_length = len(self.text)
@@ -517,14 +520,28 @@ class QR_GEN:
             return text_encoded
         except UnicodeEncodeError:
             return text.encode('utf-8')
-        
+
+    def pad_bitstream(self, bits):
+        capacity_bits = self.ERROR_CORRECTION_TABLE[self.version][self.correction_level][0] * 8
+        if len(bits) > capacity_bits:
+            raise ValueError(f"Data too long: {len(bits)} bits, capacity {capacity_bits}")
+
+        bits += "0" * min(4, capacity_bits - len(bits))   # terminator
+        bits += "0" * (-len(bits) % 8)                    # byte-align
+
+        pads = ("11101100", "00010001")
+        i = 0
+        while len(bits) < capacity_bits:
+            bits += pads[i]
+            i ^= 1
+        return bits
+
     def encoding(self):
         
         self.set_version()
         
-        mode_indicator = self.get_mode_indicator()
-        self.encoded_data = mode_indicator + self.get_character_count_indicator() + self.get_encoded_data()
-        
+        bits = self.get_mode_indicator() + self.get_character_count_indicator() + self.get_encoded_data()
+        self.encoded_data = self.pad_bitstream(bits)
         print(self.encoded_data)
 
     def error_correction(self):

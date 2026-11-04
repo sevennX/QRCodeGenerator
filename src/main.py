@@ -1,4 +1,4 @@
-
+import math
 
 
 
@@ -508,14 +508,65 @@ class QR_GEN:
         print(self.encoded_data)
 
     def get_message_polynomial(self):
+        #the power of the term is arr length - i
         
         return [int(self.encoded_data[i:i+8],2) for i in range(0, len(self.encoded_data), 8)]
+
+    def xor_convolve(self,pol1 , pol2):
+
+        res = [0] * (len(pol1) + len(pol2) -1)
+
+        for i , term1 in enumerate(pol1):
+            for j , term2 in enumerate(pol2):
+
+                product = self.mul_logs_antilogs(term1, term2)
+
+                res[i+j] ^= product
+
+        return res
         
-    def get_generator_polynomial(self):
+    def get_generator_polynomial(self,err_corr_codw):
         # (x - ɑ0) ... (x - ɑn-1) where a = 2 and n = number_error_correction_codewords_mustBeGenerated.
-        pass
+        a = 2
+        # compute the convolution of the coffecients
+        result = [1 , 1]
+        
+
+        for i in range(1 , err_corr_codw):
+            result = self.xor_convolve(result , [1 , pow(a,i)])
+        
+        return result
+        
     def polynomial_division(self):
         pass
+
+    def get_power_ofTwo(self,n):
+
+        if n < 0:
+            return
+        else:
+            res = pow(2 , n)
+            if res > 255 : 
+                below = 2 * self.get_power_ofTwo(n-1)
+                if below > 255:
+                    return below ^ 285
+                else:
+                    return below
+            else:
+                return res
+            
+            
+
+    def mul_logs_antilogs(self,a,b):
+        a_exp = math.log2(a)
+        b_exp = math.log2(b)
+        ab_exponents_added = int(math.log2(a)) + int(math.log2(b))
+
+        if (ab_exponents_added) > 255 : 
+            return self.get_power_ofTwo( (ab_exponents_added) % 255 )
+        else:
+            return self.get_power_ofTwo(ab_exponents_added)
+        
 
     def error_correction(self):
         #ec stand for error correction
@@ -545,5 +596,8 @@ text = input("enter ur text : ")
 
 generator = QR_GEN(text)
 
-generator.encoding()
-generator.error_correction()
+print(generator.mul_logs_antilogs(16 , 32))
+#print(generator.get_power_ofTwo(12))
+print(generator.get_generator_polynomial(3))
+#generator.encoding()
+#generator.error_correction()

@@ -387,7 +387,12 @@ class QR_GEN:
                     return 12
         
     def get_character_count_indicator(self):
-        text_length = len(self.text)
+
+        if self.mode == "byte":
+            text_length = len(self.encode_utf_iso(self.text))
+        else:
+             text_length = len(self.text)
+
         text_length_binary = f"{text_length:b}" # depending on the qr version and mode must be at a certain long 
         
         return  "0"*(self.padding_zeros() - len(text_length_binary))+ text_length_binary
@@ -469,50 +474,8 @@ class QR_GEN:
     
         else:
             raise ValueError(f"Unsupported QR mode: {mode}")
-    
-        # 5. Determine data capacity
-        (total_data_codewords ) = (
-            self.ERROR_CORRECTION_TABLE[self.version][self.correction_level][0]
-        )
-        capacity_bits = total_data_codewords * 8
-        if len(encoded_text) > capacity_bits:
-            raise ValueError(
-                f"Data too long: {len(encoded_text)} bits, "
-                f"capacity is {capacity_bits} bits."
-            )
-    
-        # 6. Add terminator: up to four zero bits
-        terminator_length = min(4, capacity_bits - len(encoded_text))
-        encoded_text += "0" * terminator_length
-    
-        # 7. Add zero bits until byte-aligned
-        alignment_length = (-len(encoded_text)) % 8
-        encoded_text += "0" * alignment_length
-    
-        # 8. Add alternating pad codewords until capacity is reached
-        pad_codewords = ("11101100", "00010001")
-        pad_index = 0
-    
-        while len(encoded_text) < capacity_bits:
-            remaining = capacity_bits - len(encoded_text)
-    
-            if remaining < 8:
-                # Normally unreachable because capacity is byte-aligned
-                encoded_text += "0" * remaining
-                break
-    
-            encoded_text += pad_codewords[pad_index]
-            pad_index = 1 - pad_index
-    
-        # 9. Validate the final result
-        if len(encoded_text) != capacity_bits:
-            raise AssertionError(
-                f"Wrong final length: {len(encoded_text)} bits; "
-                f"expected {capacity_bits} bits."
-            )
-    
-        return encoded_text
 
+        return encoded_text
     def encode_utf_iso(self,text):
         try:
             
@@ -544,12 +507,37 @@ class QR_GEN:
         self.encoded_data = self.pad_bitstream(bits)
         print(self.encoded_data)
 
+    def get_message_polynomial(self):
+        
+        return [int(self.encoded_data[i:i+8],2) for i in range(0, len(self.encoded_data), 8)]
+        
+    def get_generator_polynomial(self):
+        # (x - ɑ0) ... (x - ɑn-1) where a = 2 and n = number_error_correction_codewords_mustBeGenerated.
+        pass
+    def polynomial_division(self):
+        pass
+
     def error_correction(self):
         #ec stand for error correction
         (ec_code_per_block ,grp1_blocks, grp1_codewords_per_block , grp2_blocks , grp2_codewords_per_block) =self.ERROR_CORRECTION_TABLE[self.version][self.correction_level][1:]
+        if self.version > 2 : # we need to split the codewords into groups
+            group1_blocks = []
+            group2_blocks = []
+            current = 0
+            for i in range(grp1_blocks) :
+                group1_blocks.append(self.encoded_data[current:current+grp1_codewords_per_block*8])
+                current+=grp1_codewords_per_block*8
+
+            
+            for i in range(grp2_blocks) :
+                group2_blocks.append(self.encoded_data[current:current+grp2_codewords_per_block*8])
+                current+=grp2_codewords_per_block*8
+
+            
 
         #generating error correction codewords will be done using reed_solomon ....
-        message_polynomial_coff = [int(self.encoded_data[i:i+8],2) for i in range(0, len(self.encoded_data), 8)]
+        message_polynomial_coff = self.get_message_polynomial()
+
         print(message_polynomial_coff)
         pass
 

@@ -519,53 +519,67 @@ class QR_GEN:
         for i , term1 in enumerate(pol1):
             for j , term2 in enumerate(pol2):
 
-                product = self.mul_logs_antilogs(term1, term2)
-
+                product = self.gf_mul(term1, term2)
+                
+                print(f"performing the xor of {res[i+j]} and {product}")
                 res[i+j] ^= product
 
         return res
         
     def get_generator_polynomial(self,err_corr_codw):
+
+        if err_corr_codw == 1 :
+            return [1,1]
+        else:
+            result = self.get_generator_polynomial(err_corr_codw - 1)
+            return self.xor_convolve(result , [1,self.get_power_ofTwo(err_corr_codw - 1)])
+
         # (x - ɑ0) ... (x - ɑn-1) where a = 2 and n = number_error_correction_codewords_mustBeGenerated.
-        a = 2
+        ##a = 2
         # compute the convolution of the coffecients
-        result = [1 , 1]
+        ##result = [1 , 1]
         
 
-        for i in range(1 , err_corr_codw):
-            result = self.xor_convolve(result , [1 , pow(a,i)])
+        ##for i in range(1 , err_corr_codw):
+            ##result = self.xor_convolve(result , [1 , pow(a,i)])
         
+        ##return result
+        
+    def polynomial_division(self ,message_pol , generator_pol ,err_cc_per_block):
+        #multiply the message polynomial by x^n where n is the err corr codewords needed 
+        xn = [1] + [0] * (err_cc_per_block - 1)
+
+    def get_power_ofTwo(self, n):
+
+        result = 1
+
+        for _ in range(n):
+
+            result <<= 1
+
+            if result & 0x100:
+                result ^= 0x11D
+
         return result
-        
-    def polynomial_division(self):
-        pass
-
-    def get_power_ofTwo(self,n):
-
-        if n < 0:
-            return
-        else:
-            res = pow(2 , n)
-            if res > 255 : 
-                below = 2 * self.get_power_ofTwo(n-1)
-                if below > 255:
-                    return below ^ 285
-                else:
-                    return below
-            else:
-                return res
-            
             
 
-    def mul_logs_antilogs(self,a,b):
-        a_exp = math.log2(a)
-        b_exp = math.log2(b)
-        ab_exponents_added = int(math.log2(a)) + int(math.log2(b))
+    def gf_mul(self, a, b):
 
-        if (ab_exponents_added) > 255 : 
-            return self.get_power_ofTwo( (ab_exponents_added) % 255 )
-        else:
-            return self.get_power_ofTwo(ab_exponents_added)
+        result = 0
+
+        while b:
+
+            if b & 1:
+                result ^= a
+
+            a <<= 1
+
+            if a & 0x100:
+                a ^= 0x11D
+
+            b >>= 1
+
+        return result
         
 
     def error_correction(self):
@@ -588,15 +602,16 @@ class QR_GEN:
 
         #generating error correction codewords will be done using reed_solomon ....
         message_polynomial_coff = self.get_message_polynomial()
-
-        print(message_polynomial_coff)
+        generator_polynomial_coff = self.get_generator_polynomial()
+        devision_result = self.polynomial_division(message_polynomial_coff , generator_polynomial_coff , err_cc_per_block)
+        print("devision result : ", devision_result)
         pass
 
 text = input("enter ur text : ")
 
 generator = QR_GEN(text)
 
-print(generator.mul_logs_antilogs(16 , 32))
+#print(generator.mul_logs_antilogs(16 , 32))
 #print(generator.get_power_ofTwo(12))
 print(generator.get_generator_polynomial(3))
 #generator.encoding()

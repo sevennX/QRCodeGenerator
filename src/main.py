@@ -547,7 +547,28 @@ class QR_GEN:
         
     def polynomial_division(self ,message_pol , generator_pol ,err_cc_per_block):
         #multiply the message polynomial by x^n where n is the err corr codewords needed 
-        xn = [1] + [0] * (err_cc_per_block - 1)
+        xn = [1] + [0] * err_cc_per_block
+        updated_mess_pol = self.gf_mul(message_pol , xn)
+
+        yn = [1] + [0] * ( len(updated_mess_pol)  - len(generator_pol) )
+        updated_gen_pol = self.gf_mul(generator_pol , yn)
+
+        #multiply the generator polynomial by the lead term of the message polynomial 
+        message_pol_len = len(updated_mess_pol)
+        while len(updated_mess_pol) >= len(updated_gen_pol):
+
+            lead_term_coff = updated_mess_pol[0]
+            #multiply the generator polynomial by 2 ^ alpha_notation_exp
+            for i , term in enumerate(updated_gen_pol):
+                updated_gen_pol[i] = self.gf_mul(term , lead_term_coff)
+
+            updated_mess_pol = [a^b for a,b in zip(updated_mess_pol , updated_gen_pol)]
+            
+            while updated_mess_pol[0] == 0:
+                updated_mess_pol.pop(0)
+        
+        print(f"the remainder : {updated_mess_pol}")
+
 
     def get_power_ofTwo(self, n):
 
@@ -602,10 +623,10 @@ class QR_GEN:
 
         #generating error correction codewords will be done using reed_solomon ....
         message_polynomial_coff = self.get_message_polynomial()
-        generator_polynomial_coff = self.get_generator_polynomial()
-        devision_result = self.polynomial_division(message_polynomial_coff , generator_polynomial_coff , err_cc_per_block)
+        generator_polynomial_coff = self.get_generator_polynomial(ec_code_per_block)
+        devision_result = self.polynomial_division(message_polynomial_coff , generator_polynomial_coff , ec_code_per_block)
         print("devision result : ", devision_result)
-        pass
+        
 
 text = input("enter ur text : ")
 
@@ -613,6 +634,6 @@ generator = QR_GEN(text)
 
 #print(generator.mul_logs_antilogs(16 , 32))
 #print(generator.get_power_ofTwo(12))
-print(generator.get_generator_polynomial(3))
-#generator.encoding()
-#generator.error_correction()
+#print(generator.get_generator_polynomial(3))
+generator.encoding()
+generator.error_correction()
